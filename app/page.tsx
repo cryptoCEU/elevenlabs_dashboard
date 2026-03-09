@@ -6,6 +6,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
 import CallDetail from "@/components/CallDetail";
 import ImportModal from "@/components/ImportModal";
+import AnalyticsSection from "@/components/AnalyticsSection";
 
 interface CallsResponse {
   calls: ElevenLabsCall[];
@@ -411,6 +412,9 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {/* Analytics Section */}
+        <AnalyticsSection />
 
         {/* Webhook hint */}
         <div
