@@ -48,7 +48,7 @@ export default function ImportModal({ onClose, onImportComplete }: Props) {
       while (hasMore) {
         addLog(`Descargando lote ${batches + 1}...`);
 
-        const res = await fetch("/api/import", {
+        const res: Response = await fetch("/api/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
