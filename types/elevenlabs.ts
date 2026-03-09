@@ -32,6 +32,7 @@ export interface ElevenLabsCall {
   metadata: CallMetadata;
   analysis: CallAnalysis | null;
   raw_payload: Record<string, unknown>;
+  event_timestamp: string | null;
   created_at: string;
 }
 
