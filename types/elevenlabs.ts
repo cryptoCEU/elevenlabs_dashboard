@@ -16,6 +16,18 @@ export interface CallMetadata {
   call_duration_secs?: number;
   cost?: number;
   termination_reason?: string;
+  latency?: {
+    p50?: number;
+    p90?: number;
+    p95?: number;
+    p99?: number;
+    mean?: number;
+    max?: number;
+  };
+  agent_response_latency_secs?: number;
+  llm_response_latency_secs?: number;
+  tts_latency_secs?: number;
+  user_wait_time_secs?: number;
   phone_call?: {
     direction?: string;
     from?: string;
