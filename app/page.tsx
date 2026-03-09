@@ -82,28 +82,69 @@ export default function Dashboard() {
     return phone.from || phone.to || null;
   };
 
+  // Get latency in ms from metadata — tries several possible fields
+  const getLatency = (call: ElevenLabsCall): string => {
+    const m = call.metadata;
+    if (!m) return "—";
+    // p50 from latency object
+    if (m.latency?.p50) return `${Math.round(m.latency.p50)}ms`;
+    if (m.latency?.mean) return `${Math.round(m.latency.mean)}ms`;
+    if (m.agent_response_latency_secs) return `${Math.round(m.agent_response_latency_secs * 1000)}ms`;
+    // Try from raw_payload
+    const raw = call.raw_payload as Record<string, unknown>;
+    const rawMeta = (raw?.metadata || raw?.data) as Record<string, unknown> | undefined;
+    if (rawMeta?.latency) {
+      const lat = rawMeta.latency as Record<string, number>;
+      if (lat.p50) return `${Math.round(lat.p50)}ms`;
+      if (lat.mean) return `${Math.round(lat.mean)}ms`;
+    }
+    return "—";
+  };
+
+  const getLLMLatency = (call: ElevenLabsCall): string => {
+    const m = call.metadata;
+    if (!m) return "—";
+    if (m.llm_response_latency_secs) return `${Math.round(m.llm_response_latency_secs * 1000)}ms`;
+    return "—";
+  };
+
+  const getTTSLatency = (call: ElevenLabsCall): string => {
+    const m = call.metadata;
+    if (!m) return "—";
+    if (m.tts_latency_secs) return `${Math.round(m.tts_latency_secs * 1000)}ms`;
+    return "—";
+  };
+
+  const getCost = (call: ElevenLabsCall): string => {
+    const cost = call.metadata?.cost;
+    if (cost == null) return "—";
+    return `$${cost.toFixed(4)}`;
+  };
+
   const stats = data
     ? {
         total: data.total,
-        completed: data.calls.filter((c) =>
-          ["done", "completed"].includes(c.status)
-        ).length,
-        failed: data.calls.filter((c) =>
-          ["failed", "error"].includes(c.status)
-        ).length,
+        completed: data.calls.filter((c) => ["done", "completed"].includes(c.status)).length,
+        failed: data.calls.filter((c) => ["failed", "error"].includes(c.status)).length,
         avgDuration:
-          data.calls.reduce(
-            (sum, c) => sum + (c.metadata?.call_duration_secs || 0),
-            0
-          ) / (data.calls.length || 1),
+          data.calls.reduce((sum, c) => sum + (c.metadata?.call_duration_secs || 0), 0) /
+          (data.calls.length || 1),
       }
     : null;
+
+  const TABLE_HEADERS = [
+    "ESTADO", "CONVERSATION ID", "TELÉFONO",
+    "DURACIÓN", "LATENCIA P50", "LLM", "TTS",
+    "MENSAJES", "COSTE", "TIMESTAMP", ""
+  ];
 
   return (
     <div className="min-h-screen text-terminal-text">
       {/* Header */}
-      <header className="border-b border-terminal-border sticky top-0 z-50"
-        style={{ background: "rgba(10,10,10,0.95)", backdropFilter: "blur(10px)" }}>
+      <header
+        className="border-b border-terminal-border sticky top-0 z-50"
+        style={{ background: "rgba(10,10,10,0.95)", backdropFilter: "blur(10px)" }}
+      >
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
@@ -113,12 +154,9 @@ export default function Dashboard() {
               </span>
             </div>
             <span className="text-terminal-border">|</span>
-            <span className="font-mono text-xs text-terminal-dim">
-              CALL INTELLIGENCE DASHBOARD
-            </span>
+            <span className="font-mono text-xs text-terminal-dim">CALL INTELLIGENCE DASHBOARD</span>
           </div>
-
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <span className="font-mono text-xs text-terminal-dim">
               UPD: {format(lastUpdated, "HH:mm:ss")}
             </span>
@@ -156,21 +194,14 @@ export default function Dashboard() {
               { label: "TOTAL LLAMADAS", value: stats.total, color: "var(--text)" },
               { label: "COMPLETADAS", value: stats.completed, color: "var(--green)" },
               { label: "FALLIDAS", value: stats.failed, color: "var(--red)" },
-              {
-                label: "DURACIÓN MEDIA",
-                value: `${Math.round(stats.avgDuration)}s`,
-                color: "var(--amber)",
-              },
+              { label: "DURACIÓN MEDIA", value: `${Math.round(stats.avgDuration)}s`, color: "var(--amber)" },
             ].map((stat) => (
               <div
                 key={stat.label}
                 className="border border-terminal-border rounded p-4"
                 style={{ background: "var(--surface)" }}
               >
-                <div
-                  className="font-mono text-2xl font-bold count-up"
-                  style={{ color: stat.color }}
-                >
+                <div className="font-mono text-2xl font-bold count-up" style={{ color: stat.color }}>
                   {stat.value}
                 </div>
                 <div className="font-mono text-xs text-terminal-dim mt-1 tracking-wider">
@@ -181,12 +212,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Search & Filters */}
+        {/* Search */}
         <div className="flex gap-3 mb-4">
           <div className="flex-1 relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-terminal-amber text-sm">
-              ›
-            </span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-terminal-amber text-sm">›</span>
             <input
               type="text"
               placeholder="Buscar por conversation ID..."
@@ -195,8 +224,10 @@ export default function Dashboard() {
               className="w-full font-mono text-sm bg-terminal-surface border border-terminal-border rounded px-8 py-2 text-terminal-text placeholder-terminal-muted focus:outline-none focus:border-terminal-amber transition-colors"
             />
           </div>
-          <div className="font-mono text-xs text-terminal-dim flex items-center px-3 border border-terminal-border rounded"
-            style={{ background: "var(--surface)" }}>
+          <div
+            className="font-mono text-xs text-terminal-dim flex items-center px-3 border border-terminal-border rounded"
+            style={{ background: "var(--surface)" }}
+          >
             {data?.total ?? 0} REGISTROS
           </div>
         </div>
@@ -206,10 +237,9 @@ export default function Dashboard() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-terminal-border"
-                  style={{ background: "rgba(245,158,11,0.05)" }}>
-                  {["ESTADO", "CONVERSATION ID", "AGENTE", "TELÉFONO", "DURACIÓN", "MENSAJES", "TIMESTAMP", ""].map((h) => (
-                    <th key={h} className="font-mono text-xs text-terminal-dim tracking-widest text-left px-4 py-3">
+                <tr className="border-b border-terminal-border" style={{ background: "rgba(245,158,11,0.05)" }}>
+                  {TABLE_HEADERS.map((h) => (
+                    <th key={h} className="font-mono text-xs text-terminal-dim tracking-widest text-left px-4 py-3 whitespace-nowrap">
                       {h}
                     </th>
                   ))}
@@ -219,17 +249,19 @@ export default function Dashboard() {
                 {loading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="border-b border-terminal-border">
-                      {Array.from({ length: 8 }).map((_, j) => (
+                      {Array.from({ length: TABLE_HEADERS.length }).map((_, j) => (
                         <td key={j} className="px-4 py-3">
-                          <div className="h-3 rounded animate-pulse"
-                            style={{ background: "var(--border)", width: j === 1 ? "180px" : "60px" }} />
+                          <div
+                            className="h-3 rounded animate-pulse"
+                            style={{ background: "var(--border)", width: j === 1 ? "160px" : "50px" }}
+                          />
                         </td>
                       ))}
                     </tr>
                   ))
                 ) : data?.calls.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-16">
+                    <td colSpan={TABLE_HEADERS.length} className="text-center py-16">
                       <div className="font-mono text-terminal-dim text-sm">
                         <div className="text-2xl mb-2">∅</div>
                         <div>NO HAY LLAMADAS REGISTRADAS</div>
@@ -240,85 +272,115 @@ export default function Dashboard() {
                     </td>
                   </tr>
                 ) : (
-                  data?.calls.map((call, i) => (
-                    <tr
-                      key={call.id}
-                      onClick={() => setSelectedCall(call)}
-                      className="border-b border-terminal-border cursor-pointer transition-all hover:bg-terminal-surface group"
-                      style={{ animationDelay: `${i * 30}ms` }}
-                    >
-                      {/* Status */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="status-dot animate-pulse-slow"
-                            style={{ background: statusColor(call.status) }}
-                          />
-                          <span
-                            className="font-mono text-xs font-medium"
-                            style={{ color: statusColor(call.status) }}
-                          >
-                            {statusLabel(call.status)}
+                  data?.calls.map((call, i) => {
+                    const latency = getLatency(call);
+                    const llmLat = getLLMLatency(call);
+                    const ttsLat = getTTSLatency(call);
+                    const latencyNum = latency !== "—" ? parseInt(latency) : null;
+                    const latencyColor =
+                      latencyNum === null ? "var(--dim)"
+                      : latencyNum < 500 ? "var(--green)"
+                      : latencyNum < 1500 ? "var(--amber)"
+                      : "var(--red)";
+
+                    return (
+                      <tr
+                        key={call.id}
+                        onClick={() => setSelectedCall(call)}
+                        className="border-b border-terminal-border cursor-pointer transition-all hover:bg-terminal-surface group"
+                        style={{ animationDelay: `${i * 30}ms` }}
+                      >
+                        {/* Estado */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="status-dot animate-pulse-slow"
+                              style={{ background: statusColor(call.status) }}
+                            />
+                            <span className="font-mono text-xs font-medium" style={{ color: statusColor(call.status) }}>
+                              {statusLabel(call.status)}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Conversation ID */}
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs text-terminal-amber">
+                            {call.conversation_id.substring(0, 18)}…
                           </span>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Conversation ID */}
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-terminal-amber">
-                          {call.conversation_id.substring(0, 20)}...
-                        </span>
-                      </td>
+                        {/* Teléfono */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs text-terminal-text">
+                            {getPhone(call) || "—"}
+                          </span>
+                        </td>
 
-                      {/* Agent */}
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-terminal-dim">
-                          {call.agent_id.substring(0, 12)}…
-                        </span>
-                      </td>
+                        {/* Duración */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs text-terminal-text font-medium">
+                            {getDuration(call)}
+                          </span>
+                        </td>
 
-                      {/* Phone */}
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-terminal-text">
-                          {getPhone(call) || "—"}
-                        </span>
-                      </td>
+                        {/* Latencia P50 */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs font-medium" style={{ color: latencyColor }}>
+                            {latency}
+                          </span>
+                        </td>
 
-                      {/* Duration */}
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-terminal-text">
-                          {getDuration(call)}
-                        </span>
-                      </td>
+                        {/* LLM latency */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs text-terminal-dim">
+                            {llmLat}
+                          </span>
+                        </td>
 
-                      {/* Messages */}
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-terminal-text">
-                          {call.transcript?.length || 0}
-                        </span>
-                      </td>
+                        {/* TTS latency */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs text-terminal-dim">
+                            {ttsLat}
+                          </span>
+                        </td>
 
-                      {/* Timestamp */}
-                      <td className="px-4 py-3">
-                        <div className="font-mono text-xs text-terminal-dim">
-                          {formatDistanceToNow(new Date(call.event_timestamp || call.created_at), {
-                            addSuffix: true,
-                            locale: es,
-                          })}
-                        </div>
-                        <div className="font-mono text-xs text-terminal-muted">
-                          {format(new Date(call.event_timestamp || call.created_at), "dd/MM HH:mm")}
-                        </div>
-                      </td>
+                        {/* Mensajes */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs text-terminal-text">
+                            {call.transcript?.length || 0}
+                          </span>
+                        </td>
 
-                      {/* Arrow */}
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-terminal-amber opacity-0 group-hover:opacity-100 transition-opacity">
-                          →
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                        {/* Coste */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs text-terminal-dim">
+                            {getCost(call)}
+                          </span>
+                        </td>
+
+                        {/* Timestamp */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="font-mono text-xs text-terminal-dim">
+                            {formatDistanceToNow(new Date(call.event_timestamp || call.created_at), {
+                              addSuffix: true,
+                              locale: es,
+                            })}
+                          </div>
+                          <div className="font-mono text-xs text-terminal-muted">
+                            {format(new Date(call.event_timestamp || call.created_at), "dd/MM HH:mm")}
+                          </div>
+                        </td>
+
+                        {/* Arrow */}
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-terminal-amber opacity-0 group-hover:opacity-100 transition-opacity">
+                            →
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -350,15 +412,13 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Webhook URL hint */}
-        <div className="mt-8 border border-terminal-border rounded p-4"
-          style={{ background: "rgba(245,158,11,0.03)" }}>
-          <div className="font-mono text-xs text-terminal-amber mb-2 tracking-wider">
-            ⚡ WEBHOOK ENDPOINT
-          </div>
-          <div className="font-mono text-xs text-terminal-dim">
-            Configura en ElevenLabs → Agent → Webhooks:
-          </div>
+        {/* Webhook hint */}
+        <div
+          className="mt-8 border border-terminal-border rounded p-4"
+          style={{ background: "rgba(245,158,11,0.03)" }}
+        >
+          <div className="font-mono text-xs text-terminal-amber mb-2 tracking-wider">⚡ WEBHOOK ENDPOINT</div>
+          <div className="font-mono text-xs text-terminal-dim">Configura en ElevenLabs → Agent → Webhooks:</div>
           <div className="font-mono text-sm text-terminal-text mt-1 bg-black rounded px-3 py-2 border border-terminal-border">
             https://TU-DOMINIO.vercel.app/api/webhook
           </div>
@@ -367,10 +427,7 @@ export default function Dashboard() {
 
       {/* Call Detail Panel */}
       {selectedCall && (
-        <CallDetail
-          call={selectedCall}
-          onClose={() => setSelectedCall(null)}
-        />
+        <CallDetail call={selectedCall} onClose={() => setSelectedCall(null)} />
       )}
 
       {/* Import Modal */}
