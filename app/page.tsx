@@ -93,11 +93,27 @@ export default function Dashboard() {
   };
 
   const getDuration = (call: ElevenLabsCall) => {
-    const secs = (deepFind(call, "call_duration_secs", "duration_secs", "duration") as number) || 0;
-    if (!secs) return "—";
+    const raw = deepFind(call, "call_duration_secs", "duration_secs", "duration");
+    const secs = typeof raw === "number" ? raw : null;
+    if (secs === null) return "—";
+    if (secs === 0) return "0s";
     const m = Math.floor(secs / 60);
     const s = Math.round(secs % 60);
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  };
+
+  // Extract error reason from metadata for failed calls
+  const getErrorReason = (call: ElevenLabsCall): string | null => {
+    if (!["failed", "error"].includes(call.status)) return null;
+    const meta = call.metadata as Record<string, unknown>;
+    const err = meta?.error as Record<string, unknown> | null;
+    if (err?.reason) return err.reason as string;
+    const rawMeta = (call.raw_payload as Record<string, unknown>)?.metadata as Record<string, unknown>;
+    const rawErr = rawMeta?.error as Record<string, unknown> | null;
+    if (rawErr?.reason) return rawErr.reason as string;
+    const termination = meta?.termination_reason as string;
+    if (termination) return termination;
+    return null;
   };
 
   const getPhone = (call: ElevenLabsCall) => {
@@ -306,7 +322,7 @@ export default function Dashboard() {
                         style={{ animationDelay: `${i * 30}ms` }}
                       >
                         {/* Estado */}
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-4 py-3" style={{ minWidth: 140 }}>
                           <div className="flex items-center gap-2">
                             <span
                               className="status-dot animate-pulse-slow"
@@ -316,6 +332,11 @@ export default function Dashboard() {
                               {statusLabel(call.status)}
                             </span>
                           </div>
+                          {getErrorReason(call) && (
+                            <div className="font-mono text-xs mt-0.5 leading-tight" style={{ color: "var(--red)", opacity: 0.75, maxWidth: 160, whiteSpace: "normal" }}>
+                              {(getErrorReason(call) as string).substring(0, 50)}{(getErrorReason(call) as string).length > 50 ? "…" : ""}
+                            </div>
+                          )}
                         </td>
 
                         {/* Conversation ID */}
