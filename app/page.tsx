@@ -123,26 +123,47 @@ export default function Dashboard() {
     return phone.from || phone.to || null;
   };
 
+  // Extract latency values from transcript turn metrics
+  const getTranscriptMetrics = (call: ElevenLabsCall) => {
+    const transcript = call.transcript || [];
+    const ttfbValues: number[] = [];
+    const ttsValues: number[] = [];
+
+    for (const turn of transcript) {
+      const m = turn.conversation_turn_metrics?.metrics;
+      if (!m) continue;
+      if (m.convai_llm_service_ttfb?.elapsed_time) {
+        ttfbValues.push(m.convai_llm_service_ttfb.elapsed_time * 1000);
+      }
+      if (m.convai_tts_service_ttfb?.elapsed_time) {
+        ttsValues.push(m.convai_tts_service_ttfb.elapsed_time * 1000);
+      }
+    }
+
+    const avg = (arr: number[]) =>
+      arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+
+    return {
+      avgLLMLatency: avg(ttfbValues),
+      avgTTSLatency: avg(ttsValues),
+    };
+  };
+
   const getLatency = (call: ElevenLabsCall): string => {
-    // Try latency object first
-    const lat = deepFind(call, "latency") as Record<string, number> | null;
-    if (lat?.p50) return `${Math.round(lat.p50)}ms`;
-    if (lat?.mean) return `${Math.round(lat.mean)}ms`;
-    // Try direct latency fields
-    const agentLat = deepFind(call, "agent_response_latency_secs", "response_latency_secs") as number | null;
-    if (agentLat) return `${Math.round(agentLat * 1000)}ms`;
+    const { avgLLMLatency } = getTranscriptMetrics(call);
+    if (avgLLMLatency != null) return `${avgLLMLatency}ms`;
     return "—";
   };
 
   const getLLMLatency = (call: ElevenLabsCall): string => {
-    const v = deepFind(call, "llm_response_latency_secs", "llm_latency_secs") as number | null;
-    if (v) return `${Math.round(v * 1000)}ms`;
+    const { avgLLMLatency } = getTranscriptMetrics(call);
+    if (avgLLMLatency != null) return `${avgLLMLatency}ms`;
     return "—";
   };
 
   const getTTSLatency = (call: ElevenLabsCall): string => {
-    const v = deepFind(call, "tts_latency_secs", "tts_latency") as number | null;
-    if (v) return `${Math.round(v * 1000)}ms`;
+    const { avgTTSLatency } = getTranscriptMetrics(call);
+    if (avgTTSLatency != null) return `${avgTTSLatency}ms`;
     return "—";
   };
 
