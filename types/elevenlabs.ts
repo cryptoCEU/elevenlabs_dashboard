@@ -1,7 +1,17 @@
 export interface TranscriptMessage {
   role: "agent" | "user";
-  message: string;
+  message: string | null;
   time_in_call_secs?: number;
+  conversation_turn_metrics?: {
+    metrics?: {
+      convai_llm_service_ttfb?: { elapsed_time: number };
+      convai_llm_service_ttf_sentence?: { elapsed_time: number };
+      convai_llm_service_tt_last_sentence?: { elapsed_time: number };
+      convai_tts_service_ttfb?: { elapsed_time: number };
+    };
+  } | null;
+  tool_calls?: unknown[];
+  tool_results?: unknown[];
 }
 
 export interface CallAnalysis {
