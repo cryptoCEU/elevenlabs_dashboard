@@ -146,10 +146,23 @@ export default function Dashboard() {
     return "—";
   };
 
-  const getCost = (call: ElevenLabsCall): string => {
-    const cost = (deepFind(call, "cost", "cost_credits") as number) ?? call.metadata?.cost;
+  // ElevenLabs credits (voice/TTS usage)
+  const getCredits = (call: ElevenLabsCall): string => {
+    const charging = deepFind(call, "charging") as Record<string, unknown> | null;
+    const callCharge = charging?.call_charge as number | null;
+    const cost = callCharge ?? (deepFind(call, "cost") as number | null) ?? call.metadata?.cost;
     if (cost == null) return "—";
-    return `$${cost.toFixed(4)}`;
+    if (cost === 0) return "0 cr";
+    return `${Math.round(cost)} cr`;
+  };
+
+  // LLM cost in dollars
+  const getLLMCost = (call: ElevenLabsCall): string => {
+    const charging = deepFind(call, "charging") as Record<string, unknown> | null;
+    const llmCharge = charging?.llm_charge as number | null;
+    if (llmCharge == null) return "—";
+    if (llmCharge === 0) return "$0";
+    return `$${llmCharge.toFixed(5)}`;
   };
 
   const stats = data
@@ -166,7 +179,7 @@ export default function Dashboard() {
   const TABLE_HEADERS = [
     "ESTADO", "CONVERSATION ID", "TELÉFONO",
     "DURACIÓN", "LATENCIA P50", "LLM", "TTS",
-    "MENSAJES", "COSTE", "TIMESTAMP", ""
+    "MENSAJES", "CRÉDITOS EL", "COSTE LLM", "TIMESTAMP", ""
   ];
 
   return (
@@ -388,10 +401,17 @@ export default function Dashboard() {
                           </span>
                         </td>
 
-                        {/* Coste */}
+                        {/* Créditos ElevenLabs */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs text-terminal-amber">
+                            {getCredits(call)}
+                          </span>
+                        </td>
+
+                        {/* Coste LLM */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           <span className="font-mono text-xs text-terminal-dim">
-                            {getCost(call)}
+                            {getLLMCost(call)}
                           </span>
                         </td>
 
