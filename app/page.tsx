@@ -146,23 +146,23 @@ export default function Dashboard() {
     return "—";
   };
 
-  // ElevenLabs credits (voice/TTS usage)
+  // ElevenLabs voice credits (call_charge)
   const getCredits = (call: ElevenLabsCall): string => {
     const charging = deepFind(call, "charging") as Record<string, unknown> | null;
     const callCharge = charging?.call_charge as number | null;
-    const cost = callCharge ?? (deepFind(call, "cost") as number | null) ?? call.metadata?.cost;
-    if (cost == null) return "—";
-    if (cost === 0) return "0 cr";
-    return `${Math.round(cost)} cr`;
+    if (callCharge == null) return "—";
+    if (callCharge === 0) return "0 cr";
+    return `${Math.round(callCharge)} cr`;
   };
 
-  // LLM cost in dollars
+  // LLM cost in real dollars (llm_price field)
   const getLLMCost = (call: ElevenLabsCall): string => {
     const charging = deepFind(call, "charging") as Record<string, unknown> | null;
-    const llmCharge = charging?.llm_charge as number | null;
-    if (llmCharge == null) return "—";
-    if (llmCharge === 0) return "$0";
-    return `$${llmCharge.toFixed(5)}`;
+    // llm_price is the actual dollar cost, llm_charge is credits
+    const llmPrice = charging?.llm_price as number | null;
+    if (llmPrice == null) return "—";
+    if (llmPrice === 0) return "$0.00";
+    return `$${llmPrice.toFixed(5)}`;
   };
 
   const stats = data
