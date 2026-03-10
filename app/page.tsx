@@ -69,55 +69,69 @@ export default function Dashboard() {
     return map[status] || status.toUpperCase();
   };
 
+  // Deep search helper — looks in metadata, raw_payload, and nested data fields
+  const deepFind = (call: ElevenLabsCall, ...keys: string[]): unknown => {
+    const sources = [
+      call.metadata as Record<string, unknown>,
+      call.raw_payload as Record<string, unknown>,
+      (call.raw_payload as Record<string, unknown>)?.data as Record<string, unknown>,
+      (call.raw_payload as Record<string, unknown>)?.metadata as Record<string, unknown>,
+    ].filter(Boolean);
+    for (const key of keys) {
+      for (const src of sources) {
+        if (src?.[key] !== undefined && src?.[key] !== null) return src[key];
+        // One level deeper
+        for (const v of Object.values(src || {})) {
+          if (v && typeof v === "object" && !Array.isArray(v)) {
+            const found = (v as Record<string, unknown>)[key];
+            if (found !== undefined && found !== null) return found;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
   const getDuration = (call: ElevenLabsCall) => {
-    const secs = call.metadata?.call_duration_secs;
+    const secs = (deepFind(call, "call_duration_secs", "duration_secs", "duration") as number) || 0;
     if (!secs) return "—";
     const m = Math.floor(secs / 60);
-    const s = secs % 60;
+    const s = Math.round(secs % 60);
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
   };
 
   const getPhone = (call: ElevenLabsCall) => {
-    const phone = call.metadata?.phone_call;
+    const phone = (deepFind(call, "phone_call") as Record<string, string>) ||
+      (deepFind(call, "caller_id") ? { from: deepFind(call, "caller_id") as string } : null);
     if (!phone) return null;
     return phone.from || phone.to || null;
   };
 
-  // Get latency in ms from metadata — tries several possible fields
   const getLatency = (call: ElevenLabsCall): string => {
-    const m = call.metadata;
-    if (!m) return "—";
-    // p50 from latency object
-    if (m.latency?.p50) return `${Math.round(m.latency.p50)}ms`;
-    if (m.latency?.mean) return `${Math.round(m.latency.mean)}ms`;
-    if (m.agent_response_latency_secs) return `${Math.round(m.agent_response_latency_secs * 1000)}ms`;
-    // Try from raw_payload
-    const raw = call.raw_payload as Record<string, unknown>;
-    const rawMeta = (raw?.metadata || raw?.data) as Record<string, unknown> | undefined;
-    if (rawMeta?.latency) {
-      const lat = rawMeta.latency as Record<string, number>;
-      if (lat.p50) return `${Math.round(lat.p50)}ms`;
-      if (lat.mean) return `${Math.round(lat.mean)}ms`;
-    }
+    // Try latency object first
+    const lat = deepFind(call, "latency") as Record<string, number> | null;
+    if (lat?.p50) return `${Math.round(lat.p50)}ms`;
+    if (lat?.mean) return `${Math.round(lat.mean)}ms`;
+    // Try direct latency fields
+    const agentLat = deepFind(call, "agent_response_latency_secs", "response_latency_secs") as number | null;
+    if (agentLat) return `${Math.round(agentLat * 1000)}ms`;
     return "—";
   };
 
   const getLLMLatency = (call: ElevenLabsCall): string => {
-    const m = call.metadata;
-    if (!m) return "—";
-    if (m.llm_response_latency_secs) return `${Math.round(m.llm_response_latency_secs * 1000)}ms`;
+    const v = deepFind(call, "llm_response_latency_secs", "llm_latency_secs") as number | null;
+    if (v) return `${Math.round(v * 1000)}ms`;
     return "—";
   };
 
   const getTTSLatency = (call: ElevenLabsCall): string => {
-    const m = call.metadata;
-    if (!m) return "—";
-    if (m.tts_latency_secs) return `${Math.round(m.tts_latency_secs * 1000)}ms`;
+    const v = deepFind(call, "tts_latency_secs", "tts_latency") as number | null;
+    if (v) return `${Math.round(v * 1000)}ms`;
     return "—";
   };
 
   const getCost = (call: ElevenLabsCall): string => {
-    const cost = call.metadata?.cost;
+    const cost = (deepFind(call, "cost", "cost_credits") as number) ?? call.metadata?.cost;
     if (cost == null) return "—";
     return `$${cost.toFixed(4)}`;
   };
